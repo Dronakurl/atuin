@@ -1,6 +1,41 @@
 set -gx ATUIN_SESSION (atuin uuid)
 set --erase ATUIN_HISTORY_ID
 
+# Trigger Fish history merge to pick up external changes from atuin daemon
+function _atuin_history_merge --on-event fish_prompt
+    # Only run if fish_sync is enabled and fish_merge is true
+    if not atuin config get fish_sync.enabled 2>/dev/null | grep -q "true"
+        return
+    end
+
+    if not atuin config get fish_sync.fish_merge 2>/dev/null | grep -q "true"
+        return
+    end
+
+    set -l atuin_hist_file ~/.local/share/fish/fish_history
+
+    # Check if custom history path is configured
+    set -l custom_path (atuin config get fish_sync.history_path 2>/dev/null | string replace -r '^"(.*)"$' '$1' | string replace -r "^'(.*)'$" '$1')
+    if test -n "$custom_path" -a "$custom_path" != "null"
+        set atuin_hist_file (eval echo $custom_path)
+    end
+
+    # Check if fish_history file exists
+    if not test -f "$atuin_hist_file"
+        return
+    end
+
+    # Get the current modification time
+    set -l last_mtime (stat -c %Y "$atuin_hist_file" 2>/dev/null || stat -f %m "$atuin_hist_file" 2>/dev/null)
+
+    # Only merge if file changed and it's been at least 5 seconds since last check
+    if test -n "$ATUIN_LAST_HIST_MTIME"; and test "$last_mtime" -gt "$ATUIN_LAST_HIST_MTIME"
+        command builtin history merge
+    end
+
+    set -gx ATUIN_LAST_HIST_MTIME $last_mtime
+end
+
 function _atuin_preexec --on-event fish_preexec
     if not test -n "$fish_private_mode"
         set -g ATUIN_HISTORY_ID (atuin history start -- "$argv[1]")

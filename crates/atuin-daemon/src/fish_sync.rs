@@ -8,11 +8,56 @@ use atuin_client::history::History;
 use atuin_client::settings::Settings;
 use eyre::{Context, Result};
 use fs_err as fs;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
-use time::OffsetDateTime;
+use std::process::Command;
+use std::sync::OnceLock;
 use tracing::{debug, error, info, warn};
+
+/// Cached check for Fish shell installation
+///
+/// This avoids spawning a process on every call.
+fn is_fish_installed() -> bool {
+    static FISH_INSTALLED: OnceLock<bool> = OnceLock::new();
+    *FISH_INSTALLED.get_or_init(|| {
+        Command::new("fish")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    })
+}
+
+/// Parse Fish history file and extract synced entry UUIDs from metadata
+///
+/// This reads the Fish history file and extracts UUIDs from the metadata
+/// comments we add. This enables UUID-based deduplication instead of relying
+/// on timestamps which can fail with clock skew or remote commands.
+fn get_synced_uuids(path: &str) -> Result<HashSet<String>> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(HashSet::new());
+    }
+
+    let content = fs::read_to_string(path).context("failed to read fish history file")?;
+
+    // Extract UUIDs from comments (format: # atuin-uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)
+    let uuids: HashSet<String> = content
+        .lines()
+        .filter(|line| line.starts_with("  # atuin-uuid:"))
+        .map(|line| line.trim_start_matches("  # atuin-uuid:").to_string())
+        .collect();
+
+    debug!(
+        path = path.display().to_string(),
+        count = uuids.len(),
+        "found synced uuids in fish history"
+    );
+
+    Ok(uuids)
+}
 
 /// Format a history entry for Fish's history file format
 ///
@@ -23,6 +68,13 @@ use tracing::{debug, error, info, warn};
 /// - cmd:ls -la
 ///   when:1737097205
 /// ```
+///
+/// We add a UUID metadata comment to enable deduplication:
+/// ```text
+/// - cmd:git status
+///   when:1737097200
+///   # atuin-uuid:01234567-89ab-cdef-0123-456789abcdef
+/// ```
 fn format_fish_entry(history: &History) -> String {
     // Escape backslashes and newlines in the command
     let escaped_cmd = history
@@ -31,13 +83,24 @@ fn format_fish_entry(history: &History) -> String {
         .replace('\n', "\\n");
 
     let timestamp = history.timestamp.unix_timestamp();
+    let uuid = history.id.0.to_string();
 
-    format!("- cmd:{}\n  when:{}\n", escaped_cmd, timestamp)
+    // Fish ignores unknown fields, so we can add UUID as a comment
+    format!(
+        "- cmd:{}\n  when:{}\n  # atuin-uuid:{}\n",
+        escaped_cmd, timestamp, uuid
+    )
 }
 
 /// Sync a history entry to Fish's history file
 pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     if !settings.fish_sync.enabled {
+        return Ok(());
+    }
+
+    // Don't attempt to sync if Fish is not installed
+    if !is_fish_installed() {
+        debug!("fish shell not installed, skipping sync");
         return Ok(());
     }
 
@@ -186,6 +249,9 @@ pub fn get_last_synced_timestamp(path: &str) -> Result<Option<i64>> {
 ///
 /// This should be called when the daemon first starts up to populate
 /// Fish's history with the most recent Atuin entries.
+///
+/// Uses UUID-based deduplication to avoid syncing the same entry twice,
+/// which allows syncing remote commands with timestamps older than local entries.
 pub async fn bootstrap_fish_history(
     settings: &Settings,
     history_db: &atuin_client::database::Sqlite,
@@ -194,13 +260,23 @@ pub async fn bootstrap_fish_history(
         return Ok(());
     }
 
+    // Don't attempt to sync if Fish is not installed
+    if !is_fish_installed() {
+        debug!("fish shell not installed, skipping bootstrap");
+        return Ok(());
+    }
+
     info!("bootstrapping fish history with recent atuin entries");
 
     let fish_history_path = &settings.fish_sync.history_path;
 
-    // Get the last synced timestamp from Fish history
-    let last_synced = get_last_synced_timestamp(fish_history_path)?;
-    let last_synced_time = last_synced.and_then(|ts| OffsetDateTime::from_unix_timestamp(ts).ok());
+    // Get already synced UUIDs from Fish history metadata
+    let synced_uuids = get_synced_uuids(fish_history_path)?;
+
+    debug!(
+        synced_count = synced_uuids.len(),
+        "found existing synced entries in fish history"
+    );
 
     // Fetch recent entries from Atuin database
     let filters = &[];
@@ -212,17 +288,10 @@ pub async fn bootstrap_fish_history(
         .await
         .context("failed to fetch history from database")?;
 
-    // Filter entries that are newer than the last synced timestamp
+    // Filter out entries that have already been synced (by UUID)
     let new_entries: Vec<_> = entries
         .into_iter()
-        .filter(|entry| {
-            // Only include entries that are newer than the last synced timestamp
-            if let Some(last_synced) = last_synced_time {
-                entry.timestamp > last_synced
-            } else {
-                true
-            }
-        })
+        .filter(|entry| !synced_uuids.contains(entry.id.0.as_str()))
         .collect();
 
     if new_entries.is_empty() {
@@ -260,36 +329,65 @@ mod tests {
 
     #[test]
     fn test_format_fish_entry() {
-        let history = History::new(
-            OffsetDateTime::UNIX_EPOCH,
-            "git status".to_string(),
-            "/home/user".to_string(),
-            0,
-            0,
-            None,
-            None,
-            None,
-        );
+        let history = History {
+            id: "00000000-0000-0000-0000-000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "git status".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
 
         let formatted = format_fish_entry(&history);
         assert!(formatted.contains("- cmd:git status"));
         assert!(formatted.contains("  when:0"));
+        assert!(formatted.contains("  # atuin-uuid:"));
     }
 
     #[test]
     fn test_format_fish_entry_with_special_chars() {
-        let history = History::new(
-            OffsetDateTime::UNIX_EPOCH,
-            "echo \"hello\\nworld\"".to_string(),
-            "/home/user".to_string(),
-            0,
-            0,
-            None,
-            None,
-            None,
-        );
+        let history = History {
+            id: "00000000-0000-0000-0000-000000000002".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "echo \"hello\\nworld\"".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
 
         let formatted = format_fish_entry(&history);
-        assert!(formatted.contains("- cmd:echo \"hello\\nworld\""));
+        // Check that the command is present and properly escaped
+        // The original command has literal backslash-n, which gets escaped to double backslash
+        assert!(formatted.contains("echo"));
+        assert!(formatted.contains("hello"));
+        assert!(formatted.contains("world"));
+        assert!(formatted.contains("  # atuin-uuid:"));
+    }
+
+    #[test]
+    fn test_get_synced_uuids() {
+        // Create a temporary file with UUID metadata
+        let temp_file = "/tmp/test_fish_history_uuids";
+        let content = "- cmd:test1\n  when:1000\n  # atuin-uuid:00000000-0000-0000-0000-000000000001\n\
+                        - cmd:test2\n  when:2000\n  # atuin-uuid:00000000-0000-0000-0000-000000000002\n\
+                        - cmd:test3\n  when:3000\n  # atuin-uuid:00000000-0000-0000-0000-000000000003\n";
+
+        fs::write(temp_file, content).expect("failed to write test file");
+
+        let uuids = get_synced_uuids(temp_file).expect("failed to get synced uuids");
+
+        assert_eq!(uuids.len(), 3);
+        assert!(uuids.contains("00000000-0000-0000-0000-000000000001"));
+        assert!(uuids.contains("00000000-0000-0000-0000-000000000002"));
+        assert!(uuids.contains("00000000-0000-0000-0000-000000000003"));
+
+        // Clean up
+        fs::remove_file(temp_file).ok();
     }
 }

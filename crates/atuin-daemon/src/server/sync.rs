@@ -87,26 +87,15 @@ pub async fn worker(
             alias_store.build().await?;
             var_store.build().await?;
 
-            // Sync newly downloaded entries to Fish history if enabled
-            if settings.fish_sync.enabled && !downloaded.is_empty() {
-                let settings_clone = settings.clone();
-                let history_db_clone = history_db.clone();
-                tokio::task::spawn(async move {
-                    if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
-                        tracing::error!(error = %e, "failed to sync downloaded entries to fish history");
-                    }
-                });
-            }
-
-            // Also sync new local entries to Fish history periodically (not just downloaded ones)
-            // This is needed because Fish shell's atuin integration writes directly to the database,
-            // not through the daemon, so local commands won't trigger the end_history() hook
+            // Sync entries to Fish history after sync completes
+            // This handles both downloaded entries and new local entries (from Fish hooks)
+            // The UUID-based deduplication prevents duplicates
             if settings.fish_sync.enabled {
                 let settings_clone = settings.clone();
                 let history_db_clone = history_db.clone();
                 tokio::task::spawn(async move {
                     if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
-                        tracing::error!(error = %e, "failed to sync local entries to fish history");
+                        tracing::error!(error = %e, "failed to sync entries to fish history");
                     }
                 });
             }

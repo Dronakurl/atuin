@@ -289,3 +289,18 @@ records = true
 ## The "workspace" mode is skipped when not in a workspace or workspaces = false.
 ## Default filter mode can be overridden with the filter_mode setting.
 # filters = [ "global", "host", "session", "session-preload", "workspace", "directory" ]
+
+[fish_sync]
+## Enable syncing Atuin history to Fish shell history file
+## This allows Fish's autosuggestions (ghost text) to work with Atuin history
+# enabled = false
+
+## Path to the Fish history file
+# history_path = "~/.local/share/fish/fish_history"
+
+## Maximum number of entries to keep in Fish history (prevent file bloat)
+# max_entries = 10000
+
+## Whether to trigger Fish history merge when the file changes
+## This allows autosuggestions to pick up new entries without restarting the shell
+# fish_merge = true
