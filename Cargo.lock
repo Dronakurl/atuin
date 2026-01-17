@@ -351,6 +351,7 @@ dependencies = [
  "atuin-history",
  "dashmap",
  "eyre",
+ "fs-err",
  "hyper-util",
  "listenfd",
  "prost",

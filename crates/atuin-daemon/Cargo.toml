@@ -35,6 +35,7 @@ tokio-stream = {version="0.1.14", features=["net"]}
 hyper-util = "0.1"
 
 rand.workspace = true
+fs-err = "3.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 listenfd = "1.0.1"

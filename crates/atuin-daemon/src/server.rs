@@ -29,14 +29,16 @@ pub struct HistoryService {
     running: Arc<DashMap<HistoryId, History>>,
     store: HistoryStore,
     history_db: HistoryDatabase,
+    settings: Settings,
 }
 
 impl HistoryService {
-    pub fn new(store: HistoryStore, history_db: HistoryDatabase) -> Self {
+    pub fn new(store: HistoryStore, history_db: HistoryDatabase, settings: Settings) -> Self {
         Self {
             running: Arc::new(DashMap::new()),
             store,
             history_db,
+            settings,
         }
     }
 }
@@ -107,6 +109,21 @@ impl HistorySvc for HistoryService {
                 .save(&history)
                 .await
                 .map_err(|e| Status::internal(format!("failed to write to db: {e:?}")))?;
+
+            // Sync to Fish history if enabled
+            if self.settings.fish_sync.enabled {
+                let history_clone = history.clone();
+                let settings_clone = self.settings.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = crate::fish_sync::sync_entry(&history_clone, &settings_clone) {
+                        tracing::error!(
+                            id = history_clone.id.0.to_string(),
+                            error = %e,
+                            "failed to sync to fish history"
+                        );
+                    }
+                });
+            }
 
             tracing::info!(
                 id = id.0.to_string(),
@@ -257,7 +274,7 @@ pub async fn listen(
     let host_id = Settings::host_id().expect("failed to get host_id");
     let history_store = HistoryStore::new(store.clone(), host_id, encryption_key);
 
-    let history = HistoryService::new(history_store.clone(), history_db.clone());
+    let history = HistoryService::new(history_store.clone(), history_db.clone(), settings.clone());
 
     // start services
     tokio::spawn(sync::worker(

@@ -20,6 +20,17 @@ pub async fn worker(
 ) -> Result<()> {
     tracing::info!("booting sync worker");
 
+    // Bootstrap Fish history with recent Atuin entries if enabled
+    if settings.fish_sync.enabled {
+        let settings_clone = settings.clone();
+        let history_db_clone = history_db.clone();
+        tokio::task::spawn(async move {
+            if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
+                tracing::error!(error = %e, "failed to bootstrap fish history");
+            }
+        });
+    }
+
     let encryption_key: [u8; 32] = encryption::load_key(&settings)?.into();
     let host_id = Settings::host_id().expect("failed to get host_id");
     let alias_store = AliasStore::new(store.clone(), host_id, encryption_key);
@@ -75,6 +86,30 @@ pub async fn worker(
 
             alias_store.build().await?;
             var_store.build().await?;
+
+            // Sync newly downloaded entries to Fish history if enabled
+            if settings.fish_sync.enabled && !downloaded.is_empty() {
+                let settings_clone = settings.clone();
+                let history_db_clone = history_db.clone();
+                tokio::task::spawn(async move {
+                    if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
+                        tracing::error!(error = %e, "failed to sync downloaded entries to fish history");
+                    }
+                });
+            }
+
+            // Also sync new local entries to Fish history periodically (not just downloaded ones)
+            // This is needed because Fish shell's atuin integration writes directly to the database,
+            // not through the daemon, so local commands won't trigger the end_history() hook
+            if settings.fish_sync.enabled {
+                let settings_clone = settings.clone();
+                let history_db_clone = history_db.clone();
+                tokio::task::spawn(async move {
+                    if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
+                        tracing::error!(error = %e, "failed to sync local entries to fish history");
+                    }
+                });
+            }
 
             // Reset backoff on success
             if ticker.period().as_secs() != settings.daemon.sync_frequency {

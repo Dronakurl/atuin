@@ -420,6 +420,30 @@ impl Default for Daemon {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FishSync {
+    /// Enable syncing Atuin history to Fish shell history file
+    /// This allows Fish's autosuggestions (ghost text) to work with Atuin history
+    #[serde(alias = "enable")]
+    pub enabled: bool,
+
+    /// Path to the Fish history file
+    pub history_path: String,
+
+    /// Maximum number of entries to keep in Fish history (prevent file bloat)
+    pub max_entries: usize,
+}
+
+impl Default for FishSync {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            history_path: "~/.local/share/fish/fish_history".to_string(),
+            max_entries: 10000,
+        }
+    }
+}
+
 impl Default for Search {
     fn default() -> Self {
         Self {
@@ -523,6 +547,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub daemon: Daemon,
+
+    #[serde(default)]
+    pub fish_sync: FishSync,
 
     #[serde(default)]
     pub search: Search,
@@ -830,6 +857,9 @@ impl Settings {
             .set_default("daemon.socket_path", socket_path.to_str())?
             .set_default("daemon.systemd_socket", false)?
             .set_default("daemon.tcp_port", 8889)?
+            .set_default("fish_sync.enabled", false)?
+            .set_default("fish_sync.history_path", "~/.local/share/fish/fish_history")?
+            .set_default("fish_sync.max_entries", 10000)?
             .set_default("kv.db_path", kv_path.to_str())?
             .set_default("scripts.db_path", scripts_path.to_str())?
             .set_default(
@@ -904,6 +934,7 @@ impl Settings {
         settings.key_path = Self::expand_path(settings.key_path)?;
         settings.session_path = Self::expand_path(settings.session_path)?;
         settings.daemon.socket_path = Self::expand_path(settings.daemon.socket_path)?;
+        settings.fish_sync.history_path = Self::expand_path(settings.fish_sync.history_path)?;
 
         Ok(settings)
     }
