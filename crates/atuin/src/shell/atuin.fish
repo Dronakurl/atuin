@@ -15,7 +15,7 @@ function _atuin_history_merge --on-event fish_prompt
 
     # Only merge if file changed
     if test -n "$ATUIN_LAST_HIST_MTIME"; and test "$last_mtime" -gt "$ATUIN_LAST_HIST_MTIME"
-        command builtin history merge
+        builtin history merge
     end
 
     set -gx ATUIN_LAST_HIST_MTIME $last_mtime
