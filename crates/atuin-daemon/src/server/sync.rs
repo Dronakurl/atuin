@@ -25,7 +25,9 @@ pub async fn worker(
         let settings_clone = settings.clone();
         let history_db_clone = history_db.clone();
         tokio::task::spawn(async move {
-            if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
+            if let Err(e) =
+                crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await
+            {
                 tracing::error!(error = %e, "failed to bootstrap fish history");
             }
         });
@@ -94,7 +96,10 @@ pub async fn worker(
                 let settings_clone = settings.clone();
                 let history_db_clone = history_db.clone();
                 tokio::task::spawn(async move {
-                    if let Err(e) = crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await {
+                    if let Err(e) =
+                        crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone)
+                            .await
+                    {
                         tracing::error!(error = %e, "failed to sync entries to fish history");
                     }
                 });

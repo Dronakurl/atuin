@@ -870,7 +870,7 @@ impl Settings {
             .set_default("fish_sync.enabled", false)?
             .set_default("fish_sync.history_path", "~/.local/share/fish/fish_history")?
             .set_default("fish_sync.max_entries", 10000)?
-            .set_default("fish_sync.fish_merge", true)?
+            .set_default("fish_sync.fish_merge", false)?
             .set_default("kv.db_path", kv_path.to_str())?
             .set_default("scripts.db_path", scripts_path.to_str())?
             .set_default(

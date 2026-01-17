@@ -129,7 +129,8 @@ async fn test_trim_fish_history_integration() {
     let mut settings_with_trim = create_test_settings(&fish_path, true);
     settings_with_trim.fish_sync.max_entries = 10;
 
-    let new_history = create_history_entry("00000000-0000-0000-0000-000000000021", 21000, "new command");
+    let new_history =
+        create_history_entry("00000000-0000-0000-0000-000000000021", 21000, "new command");
     atuin_daemon::fish_sync::sync_entry(&new_history, &settings_with_trim).unwrap();
 
     let entry_count_after = count_fish_entries(&fish_path);
@@ -153,9 +154,8 @@ async fn test_get_synced_uuids_integration() {
         atuin_daemon::fish_sync::sync_entry(entry, &settings).unwrap();
     }
 
-    let synced_uuids = atuin_daemon::fish_sync::get_synced_uuids(
-        fish_path.to_str().unwrap()
-    ).unwrap();
+    let synced_uuids =
+        atuin_daemon::fish_sync::get_synced_uuids(fish_path.to_str().unwrap()).unwrap();
 
     assert_eq!(synced_uuids.len(), 3);
     assert!(synced_uuids.contains("00000000-0000-0000-0000-000000000001"));
@@ -200,9 +200,8 @@ async fn test_get_last_synced_timestamp_integration() {
         atuin_daemon::fish_sync::sync_entry(entry, &settings).unwrap();
     }
 
-    let last_timestamp = atuin_daemon::fish_sync::get_last_synced_timestamp(
-        fish_path.to_str().unwrap()
-    ).unwrap();
+    let last_timestamp =
+        atuin_daemon::fish_sync::get_last_synced_timestamp(fish_path.to_str().unwrap()).unwrap();
 
     assert_eq!(last_timestamp, Some(5000));
 }
@@ -214,10 +213,26 @@ async fn test_special_characters_in_commands() {
     let settings = create_test_settings(&fish_path, true);
 
     let test_cases = vec![
-        ("echo 'hello world'", "00000000-0000-0000-0000-000000000001", 1000),
-        ("echo \"hello\\nworld\"", "00000000-0000-0000-0000-000000000002", 2000),
-        ("ls path\\to\\file", "00000000-0000-0000-0000-000000000003", 3000),
-        ("cargo build --release", "00000000-0000-0000-0000-000000000004", 4000),
+        (
+            "echo 'hello world'",
+            "00000000-0000-0000-0000-000000000001",
+            1000,
+        ),
+        (
+            "echo \"hello\\nworld\"",
+            "00000000-0000-0000-0000-000000000002",
+            2000,
+        ),
+        (
+            "ls path\\to\\file",
+            "00000000-0000-0000-0000-000000000003",
+            3000,
+        ),
+        (
+            "cargo build --release",
+            "00000000-0000-0000-0000-000000000004",
+            4000,
+        ),
     ];
 
     for (cmd, id, ts) in &test_cases {
@@ -291,15 +306,12 @@ async fn test_empty_fish_history_file() {
     // Create empty file
     fs::write(&fish_path, "").unwrap();
 
-    let uuids = atuin_daemon::fish_sync::get_synced_uuids(
-        fish_path.to_str().unwrap()
-    ).unwrap();
+    let uuids = atuin_daemon::fish_sync::get_synced_uuids(fish_path.to_str().unwrap()).unwrap();
 
     assert_eq!(uuids.len(), 0);
 
-    let timestamp = atuin_daemon::fish_sync::get_last_synced_timestamp(
-        fish_path.to_str().unwrap()
-    ).unwrap();
+    let timestamp =
+        atuin_daemon::fish_sync::get_last_synced_timestamp(fish_path.to_str().unwrap()).unwrap();
 
     assert_eq!(timestamp, None);
 }
@@ -317,9 +329,7 @@ async fn test_uuid_extraction_with_malformed_entries() {
 
     fs::write(&fish_path, content).unwrap();
 
-    let uuids = atuin_daemon::fish_sync::get_synced_uuids(
-        fish_path.to_str().unwrap()
-    ).unwrap();
+    let uuids = atuin_daemon::fish_sync::get_synced_uuids(fish_path.to_str().unwrap()).unwrap();
 
     // Should only extract the 2 valid UUIDs
     assert_eq!(uuids.len(), 2);

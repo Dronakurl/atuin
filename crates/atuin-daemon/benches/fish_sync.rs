@@ -5,7 +5,7 @@
 
 use atuin_client::history::History;
 use atuin_client::settings::{FishSync, Settings};
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use fs_err as fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -94,9 +94,7 @@ fn benchmark_get_synced_uuids(c: &mut Criterion) {
         let path_str = fish_path.to_string_lossy().to_string();
 
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, _| {
-            b.iter(|| {
-                atuin_daemon::fish_sync::get_synced_uuids(black_box(&path_str)).unwrap()
-            })
+            b.iter(|| atuin_daemon::fish_sync::get_synced_uuids(black_box(&path_str)).unwrap())
         });
     }
 
@@ -115,7 +113,11 @@ fn benchmark_trim_fish_history(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::from_parameter(count), count, |b, _| {
             b.iter(|| {
-                atuin_daemon::fish_sync::trim_fish_history(black_box(&path_str), black_box(max_entries)).unwrap()
+                atuin_daemon::fish_sync::trim_fish_history(
+                    black_box(&path_str),
+                    black_box(max_entries),
+                )
+                .unwrap()
             })
         });
     }
@@ -139,7 +141,8 @@ fn benchmark_sync_entries_batch(c: &mut Criterion) {
                 let temp_dir = TempDir::new().unwrap();
                 let fish_path = temp_dir.path().join("fish_history");
                 let settings = create_test_settings(&fish_path);
-                atuin_daemon::fish_sync::sync_entries(black_box(&entries), black_box(&settings)).unwrap()
+                atuin_daemon::fish_sync::sync_entries(black_box(&entries), black_box(&settings))
+                    .unwrap()
             })
         });
     }

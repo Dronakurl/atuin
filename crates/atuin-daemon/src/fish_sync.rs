@@ -77,10 +77,7 @@ pub fn get_synced_uuids(path: &str) -> Result<HashSet<String>> {
 /// ```
 fn format_fish_entry(history: &History) -> String {
     // Escape backslashes and newlines in the command
-    let escaped_cmd = history
-        .command
-        .replace('\\', "\\\\")
-        .replace('\n', "\\n");
+    let escaped_cmd = history.command.replace('\\', "\\\\").replace('\n', "\\n");
 
     let timestamp = history.timestamp.unix_timestamp();
     let uuid = history.id.0.to_string();
@@ -113,11 +110,10 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     );
 
     // Ensure the parent directory exists
-    if let Some(parent) = Path::new(fish_history_path).parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)
-                .context("failed to create fish history directory")?;
-        }
+    if let Some(parent) = Path::new(fish_history_path).parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).context("failed to create fish history directory")?;
     }
 
     // Format the entry
@@ -135,10 +131,7 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
 
     file.flush().context("failed to flush fish history file")?;
 
-    debug!(
-        id = history.id.0.as_str(),
-        "synced history to fish"
-    );
+    debug!(id = history.id.0.as_str(), "synced history to fish");
 
     // Trim the file if it exceeds max_entries
     trim_fish_history(fish_history_path, settings.fish_sync.max_entries)?;
@@ -456,7 +449,8 @@ mod tests {
 
         fs::write(&temp_file, content).expect("failed to write test file");
 
-        let uuids = get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
+        let uuids =
+            get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
 
         assert_eq!(uuids.len(), 3);
         assert!(uuids.contains("00000000-0000-0000-0000-000000000001"));
@@ -471,7 +465,8 @@ mod tests {
 
         fs::write(&temp_file, "").expect("failed to write test file");
 
-        let uuids = get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
+        let uuids =
+            get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
 
         assert_eq!(uuids.len(), 0);
     }
@@ -484,7 +479,8 @@ mod tests {
 
         fs::write(&temp_file, content).expect("failed to write test file");
 
-        let uuids = get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
+        let uuids =
+            get_synced_uuids(temp_file.to_str().unwrap()).expect("failed to get synced uuids");
 
         assert_eq!(uuids.len(), 0);
     }
@@ -520,7 +516,8 @@ mod tests {
         let settings = create_test_settings(&fish_path);
 
         // Create initial file
-        let initial_content = "- cmd:initial\n  when:1000\n  # atuin-uuid:00000000-0000-0000-0000-000000000001\n";
+        let initial_content =
+            "- cmd:initial\n  when:1000\n  # atuin-uuid:00000000-0000-0000-0000-000000000001\n";
         fs::write(&fish_path, initial_content).unwrap();
 
         let history1 = create_test_history();
@@ -576,7 +573,12 @@ mod tests {
         // Create initial content with 5 entries
         let mut initial_content = String::new();
         for i in 1..=5 {
-            initial_content.push_str(&format!("- cmd:test{}\n  when:{}\n  # atuin-uuid:00000000-0000-0000-0000-00000000000{}\n", i, i * 1000, i));
+            initial_content.push_str(&format!(
+                "- cmd:test{}\n  when:{}\n  # atuin-uuid:00000000-0000-0000-0000-00000000000{}\n",
+                i,
+                i * 1000,
+                i
+            ));
         }
         fs::write(&fish_path, initial_content).unwrap();
 
@@ -656,7 +658,12 @@ mod tests {
         // Create file with 10 entries
         let mut content = String::new();
         for i in 1..=10 {
-            content.push_str(&format!("- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n", i, i * 1000, uuid::Uuid::new_v4()));
+            content.push_str(&format!(
+                "- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n",
+                i,
+                i * 1000,
+                uuid::Uuid::new_v4()
+            ));
         }
         fs::write(&fish_path, content).unwrap();
 
@@ -676,7 +683,12 @@ mod tests {
         // Create file with 3 entries
         let mut content = String::new();
         for i in 1..=3 {
-            content.push_str(&format!("- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n", i, i * 1000, uuid::Uuid::new_v4()));
+            content.push_str(&format!(
+                "- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n",
+                i,
+                i * 1000,
+                uuid::Uuid::new_v4()
+            ));
         }
         fs::write(&fish_path, content).unwrap();
 
@@ -698,7 +710,12 @@ mod tests {
         let mut content = String::new();
         for i in 1..=10 {
             let uuid = format!("00000000-0000-0000-0000-00000000000{:02}", i);
-            content.push_str(&format!("- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n", i, i * 1000, uuid));
+            content.push_str(&format!(
+                "- cmd:test{}\n  when:{}\n  # atuin-uuid:{}\n",
+                i,
+                i * 1000,
+                uuid
+            ));
         }
         fs::write(&fish_path, content).unwrap();
 
@@ -717,7 +734,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let fish_path = temp_dir.path().join("fish_history");
 
-        let content = "- cmd:test1\n  when:1000\n  # atuin-uuid:00000000-0000-0000-0000-000000000001\n";
+        let content =
+            "- cmd:test1\n  when:1000\n  # atuin-uuid:00000000-0000-0000-0000-000000000001\n";
         fs::write(&fish_path, content).unwrap();
 
         let original_content = fs::read_to_string(&fish_path).unwrap();
@@ -742,7 +760,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let fish_path = temp_dir.path().join("fish_history");
 
-        let content = "- cmd:test1\n  when:1000\n- cmd:test2\n  when:2000\n- cmd:test3\n  when:3000\n";
+        let content =
+            "- cmd:test1\n  when:1000\n- cmd:test2\n  when:2000\n- cmd:test3\n  when:3000\n";
         fs::write(&fish_path, content).unwrap();
 
         let timestamp = get_last_synced_timestamp(fish_path.to_str().unwrap()).unwrap();

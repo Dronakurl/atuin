@@ -76,15 +76,10 @@ pub fn init_static(disable_up_arrow: bool, disable_ctrl_r: bool) {
     }
 
     // Set up fish_merge environment variable if enabled in config
-    match atuin_client::settings::Settings::new() {
-        Ok(settings) => {
-            if settings.fish_sync.fish_merge {
-                println!("set -gx ATUIN_FISH_MERGE_ENABLED true");
-            }
-        }
-        Err(_) => {
-            // Silently ignore if config can't be loaded
-        }
+    if let Ok(settings) = atuin_client::settings::Settings::new()
+        && settings.fish_sync.fish_merge
+    {
+        println!("set -gx ATUIN_FISH_MERGE_ENABLED true");
     }
 }
 
@@ -103,10 +98,10 @@ pub async fn init(
     println!("{vars}");
 
     // Set up fish_merge environment variable if enabled in config
-    if let Ok(settings) = atuin_client::settings::Settings::new() {
-        if settings.fish_sync.fish_merge {
-            println!("set -gx ATUIN_FISH_MERGE_ENABLED true");
-        }
+    if let Ok(settings) = atuin_client::settings::Settings::new()
+        && settings.fish_sync.fish_merge
+    {
+        println!("set -gx ATUIN_FISH_MERGE_ENABLED true");
     }
 
     Ok(())
