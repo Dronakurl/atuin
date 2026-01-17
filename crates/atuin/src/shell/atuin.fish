@@ -15,7 +15,7 @@ function _atuin_history_merge --on-event fish_prompt
     set -l atuin_hist_file ~/.local/share/fish/fish_history
 
     # Check if custom history path is configured
-    set -l custom_path (atuin config get fish_sync.history_path 2>/dev/null | string replace -r '^"(.*)"$' '$1' | string replace -r "^'(.*)'$" '$1')
+    set -l custom_path (atuin config get fish_sync.history_path 2>/dev/null | string trim --chars='"\'')
     if test -n "$custom_path" -a "$custom_path" != "null"
         set atuin_hist_file (eval echo $custom_path)
     end
