@@ -303,4 +303,5 @@ records = true
 
 ## Whether to trigger Fish history merge when the file changes
 ## This allows autosuggestions to pick up new entries without restarting the shell
-# fish_merge = true
+## Note: Both enabled and fish_merge must be set to true for the shell hook to run
+# fish_merge = false

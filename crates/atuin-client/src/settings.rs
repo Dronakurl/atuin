@@ -445,13 +445,13 @@ impl Default for FishSync {
             enabled: false,
             history_path: "~/.local/share/fish/fish_history".to_string(),
             max_entries: 10000,
-            fish_merge: true,
+            fish_merge: false,
         }
     }
 }
 
 fn default_fish_merge() -> bool {
-    true
+    false
 }
 
 impl Default for Search {
