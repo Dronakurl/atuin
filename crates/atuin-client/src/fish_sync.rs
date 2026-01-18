@@ -11,6 +11,7 @@ use crate::history::History;
 use crate::settings::Settings;
 use atuin_common::record::RecordId;
 use eyre::{Context, Result};
+use fs2::FileExt;
 use std::fs::OpenOptions;
 use std::io::Write;
 
@@ -36,17 +37,22 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     // Format the entry
     let entry = format_fish_entry(history);
 
-    // Append to the file (let Fish handle directory creation)
+    // Open file and acquire exclusive lock to prevent concurrent write corruption
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(fish_history_path)
         .context("failed to open fish history file")?;
 
+    file.lock_exclusive()
+        .context("failed to acquire lock on fish history file")?;
+
     file.write_all(entry.as_bytes())
         .context("failed to write to fish history file")?;
 
     file.flush().context("failed to flush fish history file")?;
+
+    // Lock is automatically released when file is dropped
 
     Ok(())
 }
@@ -72,7 +78,11 @@ pub async fn sync_downloaded_entries(
         let id_str = record_id.0.simple().to_string();
         if let Ok(Some(entry)) = history_db.load(&id_str).await {
             if let Err(e) = sync_entry(&entry, settings) {
-                log::warn!("id={}, error={}: failed to sync entry to fish", entry.id.0.as_str(), e);
+                log::warn!(
+                    "id={}, error={}: failed to sync entry to fish",
+                    entry.id.0.as_str(),
+                    e
+                );
             } else {
                 synced += 1;
                 log::info!("synced {} (:hostname: {})", entry.command, entry.hostname);
@@ -80,7 +90,11 @@ pub async fn sync_downloaded_entries(
         }
     }
 
-    log::info!("synced {}/{} remote entries to fish history", synced, downloaded_ids.len());
+    log::info!(
+        "synced {}/{} remote entries to fish history",
+        synced,
+        downloaded_ids.len()
+    );
     Ok(())
 }
 
@@ -120,6 +134,7 @@ mod tests {
             id: "00000000-0000-0000-000000000000001".to_string().into(),
             timestamp: OffsetDateTime::UNIX_EPOCH,
             duration: 0,
+            exit: 0,
             command: "git status".to_string(),
             cwd: "/home/user".to_string(),
             session: "test".to_string(),
@@ -144,5 +159,62 @@ mod tests {
         assert!(fish_path.exists());
         let content = fs_err::read_to_string(&fish_path).unwrap();
         assert!(content.contains(&history.command));
+    }
+
+    #[test]
+    fn test_concurrent_write_safety() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let fish_path = Arc::new(temp_dir.path().join("fish_history"));
+        let settings = Arc::new(create_test_settings(fish_path.as_ref()));
+
+        // Create different history entries for each thread
+        let histories: Vec<_> = (0..10)
+            .map(|i| {
+                let mut h = create_test_history();
+                h.command = format!("test command {}", i);
+                Arc::new(h)
+            })
+            .collect();
+
+        // Spawn multiple threads writing to the same file
+        let handles: Vec<_> = histories
+            .into_iter()
+            .map(|history| {
+                let settings = settings.clone();
+                let fish_path = fish_path.clone();
+                thread::spawn(move || {
+                    sync_entry(&history, &settings)?;
+                    // Double-check: try to read what we wrote
+                    let content = fs_err::read_to_string(&*fish_path)?;
+                    eyre::ensure!(
+                        content.contains(&history.command),
+                        "Command not found in file"
+                    );
+                    Ok::<(), eyre::Report>(())
+                })
+            })
+            .collect();
+
+        // All should succeed without deadlocking or corrupting data
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+
+        // File should have exactly 10 entries (no corruption)
+        let content = fs_err::read_to_string(&*fish_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(
+            lines.len(),
+            20,
+            "Expected 20 lines (10 entries × 2 lines each)"
+        );
+
+        // Verify all commands are present and not interleaved
+        for i in 0..10 {
+            assert!(content.contains(&format!("test command {}", i)));
+        }
     }
 }
