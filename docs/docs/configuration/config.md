@@ -710,6 +710,54 @@ The port to use for client -> daemon communication. Only used on non-unix system
 tcp_port = 8889
 ```
 
+## fish_sync
+
+Atuin version: >= 18.4.0
+
+**This is a temporary workaround until Fish adds native API support for external history.**
+See [fish-shell/fish-shell#2186](https://github.com/fish-shell/fish-shell/issues/2186) for progress.
+
+Enable syncing Atuin history to Fish shell's history file, allowing Fish's native autosuggestions (ghost text) to work with Atuin history.
+
+**Note:** New Fish sessions will automatically pick up Atuin history. Running sessions require a restart to see new entries.
+
+Add the new section to the bottom of your config file:
+
+```toml
+[fish_sync]
+enabled = true
+```
+
+### enabled
+
+Default: `false`
+
+Master switch for the Fish sync feature. When enabled, Atuin writes history entries to Fish's history file.
+
+```toml
+enabled = true
+```
+
+### history_path
+
+Default: `~/.local/share/fish/fish_history`
+
+Path to the Fish shell history file.
+
+```toml
+history_path = "~/.local/share/fish/fish_history"
+```
+
+### max_entries
+
+Default: `0` (unlimited)
+
+Maximum number of entries to keep in the Fish history file. Set to `0` for unlimited (Fish will manage its own history size).
+
+```toml
+max_entries = 10000
+```
+
 ## theme
 
 Atuin version: >= 18.4

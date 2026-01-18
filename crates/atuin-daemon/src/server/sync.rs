@@ -25,6 +25,7 @@ pub async fn worker(
         let settings_clone = settings.clone();
         let history_db_clone = history_db.clone();
         tokio::task::spawn(async move {
+            // Log error but don't fail the sync worker
             if let Err(e) =
                 crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await
             {
@@ -89,9 +90,8 @@ pub async fn worker(
             alias_store.build().await?;
             var_store.build().await?;
 
-            // Sync entries to Fish history after sync completes
-            // This handles both downloaded entries and new local entries (from Fish hooks)
-            // The UUID-based deduplication prevents duplicates
+            // Sync newly downloaded entries to Fish history after sync completes
+            // New Fish sessions will automatically pick up all Atuin history
             if settings.fish_sync.enabled {
                 let settings_clone = settings.clone();
                 let history_db_clone = history_db.clone();

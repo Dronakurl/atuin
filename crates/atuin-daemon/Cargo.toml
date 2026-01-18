@@ -49,7 +49,3 @@ listenfd = "1.0.1"
 [build-dependencies]
 protox = "0.8.0"
 tonic-build = "0.12"
-
-[[bench]]
-name = "fish_sync"
-harness = false

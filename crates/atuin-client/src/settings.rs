@@ -430,13 +430,8 @@ pub struct FishSync {
     /// Path to the Fish history file
     pub history_path: String,
 
-    /// Maximum number of entries to keep in Fish history (prevent file bloat)
+    /// Maximum number of entries to keep in Fish history (0 = unlimited)
     pub max_entries: usize,
-
-    /// Whether to trigger Fish history merge when the file changes
-    /// This allows autosuggestions to pick up new entries without restarting the shell
-    #[serde(default = "default_fish_merge")]
-    pub fish_merge: bool,
 }
 
 impl Default for FishSync {
@@ -444,14 +439,9 @@ impl Default for FishSync {
         Self {
             enabled: false,
             history_path: "~/.local/share/fish/fish_history".to_string(),
-            max_entries: 10000,
-            fish_merge: false,
+            max_entries: 0,
         }
     }
-}
-
-fn default_fish_merge() -> bool {
-    false
 }
 
 impl Default for Search {
@@ -869,8 +859,7 @@ impl Settings {
             .set_default("daemon.tcp_port", 8889)?
             .set_default("fish_sync.enabled", false)?
             .set_default("fish_sync.history_path", "~/.local/share/fish/fish_history")?
-            .set_default("fish_sync.max_entries", 10000)?
-            .set_default("fish_sync.fish_merge", false)?
+            .set_default("fish_sync.max_entries", 0)?
             .set_default("kv.db_path", kv_path.to_str())?
             .set_default("scripts.db_path", scripts_path.to_str())?
             .set_default(
