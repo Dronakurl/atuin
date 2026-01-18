@@ -53,6 +53,64 @@ pub fn get_synced_uuids(path: &str) -> Result<HashSet<String>> {
     Ok(uuids)
 }
 
+/// Check if an entry (by command+timestamp) already exists in Fish history
+///
+/// This handles the case where Fish itself writes entries without UUID comments.
+/// Fish writes entries with format like: "- cmd: command\n  when:123"
+/// (with optional spaces after "cmd:" and "when:")
+fn entry_exists_in_fish_history(path: &str, command: &str, timestamp: i64) -> Result<bool> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let content = fs_err::read_to_string(path)
+        .context("failed to read fish history file")?;
+
+    // Normalize the command for comparison (Fish may add spaces)
+    // We need to check for both formats:
+    // "- cmd:command" and "- cmd: command" (with space)
+    let cmd_pattern1 = format!("- cmd:{}", command);
+    let cmd_pattern2 = format!("- cmd: {}", command);
+    let timestamp_str = timestamp.to_string();
+
+    // Parse entries and check for match
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+
+        // Check if this is an entry start (begins with "- cmd:")
+        if line.starts_with("- cmd:") {
+            // Extract command from this line
+            let entry_cmd = if line.len() > 6 {
+                line[6..].trim().to_string()
+            } else {
+                String::new()
+            };
+
+            // Check next line for timestamp
+            if i + 1 < lines.len() {
+                let when_line = lines[i + 1].trim();
+                if when_line.starts_with("when:") {
+                    let entry_timestamp = when_line[5..].trim();
+
+                    // Check if both command and timestamp match
+                    // (handling both Fish and Atuin formats)
+                    if (entry_cmd == command || line[6..].trim_start() == command)
+                        && entry_timestamp == timestamp_str
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    Ok(false)
+}
+
 /// Trim the Fish history file to keep only the most recent N entries
 pub fn trim_fish_history(path: &str, max_entries: usize) -> Result<()> {
     if max_entries == 0 {
@@ -141,7 +199,19 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     if Path::new(fish_history_path.as_ref()).exists() {
         let synced_uuids = get_synced_uuids(fish_history_path.as_ref())?;
         if synced_uuids.contains(uuid_str) {
-            log::debug!("entry {} already synced, skipping", uuid_str);
+            log::debug!("entry {} already synced (UUID found), skipping", uuid_str);
+            return Ok(());
+        }
+
+        // Also check if entry exists by command+timestamp (for entries written by Fish)
+        let timestamp = history.timestamp.unix_timestamp();
+        if entry_exists_in_fish_history(fish_history_path.as_ref(), &history.command, timestamp)?
+        {
+            log::debug!(
+                "entry '{}' @ {} already exists in fish history (no UUID), skipping",
+                history.command,
+                timestamp
+            );
             return Ok(());
         }
     }
