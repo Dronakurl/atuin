@@ -717,9 +717,9 @@ Atuin version: >= 18.4.0
 **This is a temporary workaround until Fish adds native API support for external history.**
 See [fish-shell/fish-shell#2186](https://github.com/fish-shell/fish-shell/issues/2186) for progress.
 
-Enable syncing Atuin history to Fish shell's history file, allowing Fish's native autosuggestions (ghost text) to work with Atuin history.
+Enable syncing remote Atuin history (from other machines) to Fish shell's history file, allowing Fish's native autosuggestions (ghost text) to work with commands from all your machines.
 
-**Note:** New Fish sessions will automatically pick up Atuin history. Running sessions require a restart to see new entries.
+**Note:** Local commands are already written to Fish history by Fish itself. This setting only controls syncing of remote commands downloaded during Atuin sync. New Fish sessions will automatically pick up the synced history. Running sessions require a restart to see new entries.
 
 Add the new section to the bottom of your config file:
 
@@ -732,7 +732,7 @@ enabled = true
 
 Default: `false`
 
-Master switch for the Fish sync feature. When enabled, Atuin writes history entries to Fish's history file.
+Master switch for the Fish sync feature. When enabled, Atuin writes remote history entries (downloaded from other machines) to Fish's history file.
 
 ```toml
 enabled = true
@@ -746,16 +746,6 @@ Path to the Fish shell history file.
 
 ```toml
 history_path = "~/.local/share/fish/fish_history"
-```
-
-### max_entries
-
-Default: `0` (unlimited)
-
-Maximum number of entries to keep in the Fish history file. Set to `0` for unlimited (Fish will manage its own history size).
-
-```toml
-max_entries = 10000
 ```
 
 ## theme

@@ -317,6 +317,7 @@ dependencies = [
  "sqlx",
  "strum",
  "strum_macros",
+ "tempfile",
  "testing_logger",
  "thiserror 1.0.69",
  "time",

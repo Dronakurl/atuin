@@ -20,20 +20,6 @@ pub async fn worker(
 ) -> Result<()> {
     tracing::info!("booting sync worker");
 
-    // Bootstrap Fish history with recent Atuin entries if enabled
-    if settings.fish_sync.enabled {
-        let settings_clone = settings.clone();
-        let history_db_clone = history_db.clone();
-        tokio::task::spawn(async move {
-            // Log error but don't fail the sync worker
-            if let Err(e) =
-                crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone).await
-            {
-                tracing::error!(error = %e, "failed to bootstrap fish history");
-            }
-        });
-    }
-
     let encryption_key: [u8; 32] = encryption::load_key(&settings)?.into();
     let host_id = Settings::host_id().expect("failed to get host_id");
     let alias_store = AliasStore::new(store.clone(), host_id, encryption_key);
@@ -90,17 +76,17 @@ pub async fn worker(
             alias_store.build().await?;
             var_store.build().await?;
 
-            // Sync newly downloaded entries to Fish history after sync completes
-            // New Fish sessions will automatically pick up all Atuin history
+            // Sync downloaded remote entries to Fish history after sync completes
             if settings.fish_sync.enabled {
                 let settings_clone = settings.clone();
                 let history_db_clone = history_db.clone();
                 tokio::task::spawn(async move {
-                    if let Err(e) =
-                        crate::fish_sync::bootstrap_fish_history(&settings_clone, &history_db_clone)
-                            .await
-                    {
-                        tracing::error!(error = %e, "failed to sync entries to fish history");
+                    if let Err(e) = atuin_client::fish_sync::sync_downloaded_entries(
+                        &settings_clone,
+                        &history_db_clone,
+                        &downloaded,
+                    ).await {
+                        tracing::error!(error = %e, "failed to sync remote entries to fish history");
                     }
                 });
             }

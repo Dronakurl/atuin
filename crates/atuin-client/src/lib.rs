@@ -10,6 +10,7 @@ pub mod sync;
 
 pub mod database;
 pub mod encryption;
+pub mod fish_sync;
 pub mod history;
 pub mod import;
 pub mod login;

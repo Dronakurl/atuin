@@ -2,8 +2,9 @@ use clap::Subcommand;
 use eyre::{Result, WrapErr};
 
 use atuin_client::{
-    database::Database,
+    database::{Database, Sqlite},
     encryption,
+    fish_sync,
     history::store::HistoryStore,
     record::{sqlite_store::SqliteStore, store::Store, sync},
     settings::Settings,
@@ -47,7 +48,7 @@ impl Cmd {
     pub async fn run(
         self,
         settings: Settings,
-        db: &impl Database,
+        db: &Sqlite,
         store: SqliteStore,
     ) -> Result<()> {
         match self {
@@ -77,7 +78,7 @@ impl Cmd {
 async fn run(
     settings: &Settings,
     force: bool,
-    db: &impl Database,
+    db: &Sqlite,
     store: SqliteStore,
 ) -> Result<()> {
     if settings.sync.records {
@@ -116,6 +117,22 @@ async fn run(
             crate::sync::build(settings, &store, db, Some(&downloaded)).await?;
 
             println!("{uploaded}/{} up/down to record store", downloaded.len());
+
+            // Sync downloaded remote entries to Fish history after second sync
+            if !downloaded.is_empty() && settings.fish_sync.enabled {
+                println!("Syncing {} remote entries to Fish history...", downloaded.len());
+                if let Err(e) = fish_sync::sync_downloaded_entries(settings, db, &downloaded).await {
+                    eprintln!("Failed to sync to fish history: {}", e);
+                }
+            }
+        } else {
+            // Sync downloaded remote entries to Fish history after first sync
+            if !downloaded.is_empty() && settings.fish_sync.enabled {
+                println!("Syncing {} remote entries to Fish history...", downloaded.len());
+                if let Err(e) = fish_sync::sync_downloaded_entries(settings, db, &downloaded).await {
+                    eprintln!("Failed to sync to fish history: {}", e);
+                }
+            }
         }
     } else {
         atuin_client::sync::sync(settings, force, db).await?;

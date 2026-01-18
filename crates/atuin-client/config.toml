@@ -291,12 +291,11 @@ records = true
 # filters = [ "global", "host", "session", "session-preload", "workspace", "directory" ]
 
 [fish_sync]
-## Enable syncing Atuin history to Fish shell history file
-## This allows Fish's autosuggestions (ghost text) to work with Atuin history
+## Enable syncing remote Atuin history (from other machines) to Fish shell history file
+## This allows Fish's autosuggestions (ghost text) to work with commands from all your machines
+## Note: Local commands are already written to Fish history by Fish itself
+## This setting only controls syncing of remote commands downloaded during Atuin sync
 # enabled = false
 
 ## Path to the Fish history file
 # history_path = "~/.local/share/fish/fish_history"
-
-## Maximum number of entries to keep in Fish history (0 = unlimited, Fish will manage its own history)
-# max_entries = 0

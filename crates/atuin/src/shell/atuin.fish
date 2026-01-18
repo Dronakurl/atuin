@@ -1,3 +1,26 @@
+# Run atuin sync on Fish startup if fish_sync is enabled
+function __atuin_sync_on_startup
+    # Check if fish_sync is enabled in config
+    set -l config_file "$HOME/.config/atuin/config.toml"
+    if not test -f "$config_file"
+        return
+    end
+
+    # Check if fish_sync.enabled = true
+    if not grep -q "fish_sync" "$config_file"
+        return
+    end
+
+    if grep -A1 "fish_sync" "$config_file" | grep -q "enabled.*=.*true"
+        # Run sync in background to avoid blocking shell startup
+        atuin sync >/dev/null 2>&1 &
+        disown
+    end
+end
+
+# Run sync on Fish init
+__atuin_sync_on_startup
+
 set -gx ATUIN_SESSION (atuin uuid)
 set --erase ATUIN_HISTORY_ID
 

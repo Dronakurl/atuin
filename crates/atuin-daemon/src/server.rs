@@ -110,21 +110,6 @@ impl HistorySvc for HistoryService {
                 .await
                 .map_err(|e| Status::internal(format!("failed to write to db: {e:?}")))?;
 
-            // Sync to Fish history if enabled
-            if self.settings.fish_sync.enabled {
-                let history_clone = history.clone();
-                let settings_clone = self.settings.clone();
-                tokio::task::spawn_blocking(move || {
-                    if let Err(e) = crate::fish_sync::sync_entry(&history_clone, &settings_clone) {
-                        tracing::error!(
-                            id = history_clone.id.0.to_string(),
-                            error = %e,
-                            "failed to sync to fish history"
-                        );
-                    }
-                });
-            }
-
             tracing::info!(
                 id = id.0.to_string(),
                 duration = history.duration,
