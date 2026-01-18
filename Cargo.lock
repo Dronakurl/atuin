@@ -1611,6 +1611,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ced73b1dacfc750a6db6c0a0c3a3853c8b41997e2e2c563dc90804ae6867959"
 
 [[package]]
+name = "fish-sync-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "atuin-client",
+ "atuin-common",
+ "atuin-server",
+ "atuin-server-database",
+ "atuin-server-sqlite",
+ "crypto_secretbox",
+ "eyre",
+ "fs-err",
+ "futures-util",
+ "sqlx",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-tree",
+ "uuid",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

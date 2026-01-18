@@ -1,21 +1,30 @@
-# Run atuin sync on Fish startup if fish_sync is enabled
+# Run atuin sync on Fish startup if fish_sync.sync_on_startup is enabled
 function __atuin_sync_on_startup
-    # Check if fish_sync is enabled in config
-    set -l config_file "$HOME/.config/atuin/config.toml"
-    if not test -f "$config_file"
+    # Check if fish_sync.sync_on_startup is enabled using atuin (proper config parsing)
+    if not atuin sync --should-fish-sync >/dev/null 2>&1
         return
     end
 
-    # Check if fish_sync.enabled = true
-    if not grep -q "fish_sync" "$config_file"
-        return
+    # Set up PID file to prevent duplicate syncs
+    set -l pid_file "$XDG_STATE_HOME/atuin/sync.pid"
+    if test -z "$pid_file" -o ! -d (dirname "$pid_file" 2>/dev/null)
+        set pid_file "$HOME/.local/state/atuin/sync.pid"
     end
 
-    if grep -A1 "fish_sync" "$config_file" | grep -q "enabled.*=.*true"
-        # Run sync in background to avoid blocking shell startup
-        atuin sync >/dev/null 2>&1 &
-        disown
+    # Check if sync is already running
+    if test -f "$pid_file"
+        set -l pid (cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null
+            return  # Sync already running
+        end
     end
+
+    # Ensure directory exists
+    mkdir -pm 700 (dirname "$pid_file")
+
+    # Run sync in background with PID tracking
+    ATUIN_SYNC_PID_FILE="$pid_file" atuin sync >/dev/null 2>&1 &
+    disown
 end
 
 # Run sync on Fish init

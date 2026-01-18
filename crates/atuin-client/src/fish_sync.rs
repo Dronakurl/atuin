@@ -12,8 +12,88 @@ use crate::settings::Settings;
 use atuin_common::record::RecordId;
 use eyre::{Context, Result};
 use fs2::FileExt;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::Path;
+use std::process::Command;
+use std::sync::OnceLock;
+
+/// Cached check for Fish shell installation
+fn is_fish_installed() -> bool {
+    static FISH_INSTALLED: OnceLock<bool> = OnceLock::new();
+    *FISH_INSTALLED.get_or_init(|| {
+        Command::new("fish")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    })
+}
+
+/// Parse Fish history file and extract synced entry UUIDs from metadata
+pub fn get_synced_uuids(path: &str) -> Result<HashSet<String>> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(HashSet::new());
+    }
+
+    let content = fs_err::read_to_string(path)
+        .context("failed to read fish history file")?;
+
+    // Extract UUIDs from comments (format: # atuin-uuid:...)
+    let uuids: HashSet<String> = content
+        .lines()
+        .filter(|line| line.starts_with("  # atuin-uuid:"))
+        .map(|line| line.trim_start_matches("  # atuin-uuid:").to_string())
+        .collect();
+
+    log::debug!("found {} synced uuids in fish history", uuids.len());
+
+    Ok(uuids)
+}
+
+/// Trim the Fish history file to keep only the most recent N entries
+pub fn trim_fish_history(path: &str, max_entries: usize) -> Result<()> {
+    if max_entries == 0 {
+        return Ok(()); // 0 means no limit
+    }
+
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content = fs_err::read_to_string(path)
+        .context("failed to read fish history file")?;
+
+    // Parse entries
+    let entries: Vec<&str> = content.split("- cmd:").skip(1).collect();
+
+    if entries.len() <= max_entries {
+        return Ok(());
+    }
+
+    log::info!(
+        "trimming fish history file from {} to {} entries",
+        entries.len(),
+        max_entries
+    );
+
+    // Keep only the most recent entries
+    let to_keep = &entries[entries.len() - max_entries..];
+
+    // Rebuild the file
+    let mut trimmed = String::new();
+    for entry in to_keep {
+        trimmed.push_str("- cmd:");
+        trimmed.push_str(entry);
+    }
+
+    fs_err::write(path, trimmed).context("failed to write trimmed fish history file")?;
+
+    Ok(())
+}
 
 /// Format a history entry for Fish's history file format
 ///
@@ -26,13 +106,45 @@ fn format_fish_entry(history: &History) -> String {
     // Escape backslashes and newlines in the command
     let escaped_cmd = history.command.replace('\\', "\\\\").replace('\n', "\\n");
     let timestamp = history.timestamp.unix_timestamp();
+    let uuid = &history.id.0;
 
-    format!("- cmd:{}\n  when:{}\n", escaped_cmd, timestamp)
+    // Add UUID as a comment for deduplication
+    format!(
+        "- cmd:{}\n  when:{}\n  # atuin-uuid:{}\n",
+        escaped_cmd, timestamp, uuid
+    )
 }
 
 /// Sync a history entry to Fish's history file
 pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
-    let fish_history_path = &settings.fish_sync.history_path;
+    if !settings.fish_sync.enabled {
+        return Ok(());
+    }
+
+    // Don't attempt to sync if Fish is not installed
+    if !is_fish_installed() {
+        log::debug!("fish shell not installed, skipping sync");
+        return Ok(());
+    }
+
+    let fish_history_path = shellexpand::tilde(&settings.fish_sync.history_path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(fish_history_path.as_ref()).parent() {
+        if !parent.exists() {
+            fs_err::create_dir_all(parent).context("failed to create fish history directory")?;
+        }
+    }
+
+    // Check if this entry is already synced (UUID deduplication)
+    let uuid_str = history.id.0.as_str();
+    if Path::new(fish_history_path.as_ref()).exists() {
+        let synced_uuids = get_synced_uuids(fish_history_path.as_ref())?;
+        if synced_uuids.contains(uuid_str) {
+            log::debug!("entry {} already synced, skipping", uuid_str);
+            return Ok(());
+        }
+    }
 
     // Format the entry
     let entry = format_fish_entry(history);
@@ -41,7 +153,7 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(fish_history_path)
+        .open(fish_history_path.as_ref())
         .context("failed to open fish history file")?;
 
     file.lock_exclusive()
@@ -53,6 +165,12 @@ pub fn sync_entry(history: &History, settings: &Settings) -> Result<()> {
     file.flush().context("failed to flush fish history file")?;
 
     // Lock is automatically released when file is dropped
+
+    // Trim if needed
+    trim_fish_history(
+        fish_history_path.as_ref(),
+        settings.fish_sync.max_entries,
+    )?;
 
     Ok(())
 }
@@ -98,6 +216,79 @@ pub async fn sync_downloaded_entries(
     Ok(())
 }
 
+/// Sync all local Atuin history entries to Fish history file
+///
+/// Uses UUID-based deduplication to avoid syncing entries that are already
+/// present in the Fish history file.
+pub async fn sync_all_entries(
+    settings: &Settings,
+    history_db: &crate::database::Sqlite,
+) -> Result<usize> {
+    if !settings.fish_sync.enabled {
+        return Ok(0);
+    }
+
+    if !is_fish_installed() {
+        log::debug!("fish shell not installed, skipping sync");
+        return Ok(0);
+    }
+
+    let fish_history_path = shellexpand::tilde(&settings.fish_sync.history_path);
+
+    // Get already synced UUIDs from Fish history metadata
+    let synced_uuids = get_synced_uuids(fish_history_path.as_ref())?;
+
+    // Fetch recent entries from Atuin database (limit by max_entries)
+    let host_id = Settings::host_id()
+        .map(|h| h.0.to_string())
+        .unwrap_or_default();
+    let context = crate::database::Context {
+        cwd: "/".to_string(),
+        hostname: host_id.clone(),
+        host_id,
+        session: "fish_sync_all".to_string(),
+        git_root: None,
+    };
+
+    let filters = &[];
+    let entries = history_db
+        .list(filters, &context, Some(settings.fish_sync.max_entries), false, false)
+        .await?;
+
+    // Filter out entries that have already been synced (by UUID)
+    let new_entries: Vec<_> = entries
+        .into_iter()
+        .filter(|entry| !synced_uuids.contains(entry.id.0.as_str()))
+        .collect();
+
+    if new_entries.is_empty() {
+        log::info!("no new entries to sync to fish history");
+        return Ok(0);
+    }
+
+    log::info!(
+        "syncing {} new entries to fish history ({} already synced)",
+        new_entries.len(),
+        synced_uuids.len()
+    );
+
+    let mut synced = 0;
+    for entry in &new_entries {
+        if let Err(e) = sync_entry(entry, settings) {
+            log::warn!(
+                "id={}, error={}: failed to sync entry to fish",
+                entry.id.0.as_str(),
+                e
+            );
+        } else {
+            synced += 1;
+        }
+    }
+
+    log::info!("synced {}/{} new entries to fish history", synced, new_entries.len());
+    Ok(synced)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +300,10 @@ mod tests {
         let mut settings = Settings::default();
         settings.fish_sync = FishSync {
             enabled: true,
+            sync_all_on_cli: false,
+            sync_all_on_daemon: false,
+            sync_on_startup: false,
+            max_entries: 10000,
             history_path: fish_path.to_string_lossy().to_string(),
         };
         settings
@@ -145,6 +340,7 @@ mod tests {
         let formatted = format_fish_entry(&history);
         assert!(formatted.contains("- cmd:git status"));
         assert!(formatted.contains("  when:0"));
+        assert!(formatted.contains("  # atuin-uuid:"));
     }
 
     #[test]
@@ -170,10 +366,11 @@ mod tests {
         let fish_path = Arc::new(temp_dir.path().join("fish_history"));
         let settings = Arc::new(create_test_settings(fish_path.as_ref()));
 
-        // Create different history entries for each thread
+        // Create different history entries for each thread with unique UUIDs
         let histories: Vec<_> = (0..10)
             .map(|i| {
                 let mut h = create_test_history();
+                h.id = format!("{:032}", i).into(); // Unique UUID for each entry
                 h.command = format!("test command {}", i);
                 Arc::new(h)
             })
@@ -208,8 +405,8 @@ mod tests {
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(
             lines.len(),
-            20,
-            "Expected 20 lines (10 entries × 2 lines each)"
+            30,
+            "Expected 30 lines (10 entries × 3 lines each)"
         );
 
         // Verify all commands are present and not interleaved

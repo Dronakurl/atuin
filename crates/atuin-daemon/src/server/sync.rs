@@ -80,13 +80,35 @@ pub async fn worker(
             if settings.fish_sync.enabled {
                 let settings_clone = settings.clone();
                 let history_db_clone = history_db.clone();
+                let downloaded_clone = downloaded.clone();
                 tokio::task::spawn(async move {
                     if let Err(e) = atuin_client::fish_sync::sync_downloaded_entries(
                         &settings_clone,
                         &history_db_clone,
-                        &downloaded,
+                        &downloaded_clone,
                     ).await {
                         tracing::error!(error = %e, "failed to sync remote entries to fish history");
+                    }
+                });
+            }
+
+            // After syncing downloaded entries, check if we should sync all local entries
+            if settings.fish_sync.sync_all_on_daemon {
+                let settings_clone = settings.clone();
+                let history_db_clone = history_db.clone();
+                tokio::task::spawn(async move {
+                    match atuin_client::fish_sync::sync_all_entries(
+                        &settings_clone,
+                        &history_db_clone,
+                    ).await {
+                        Ok(count) => {
+                            if count > 0 {
+                                tracing::info!("synced {} local entries to fish history", count);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "failed to sync all local entries to fish history");
+                        }
                     }
                 });
             }

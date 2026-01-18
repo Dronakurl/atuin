@@ -12,6 +12,8 @@ use atuin_client::{
 
 mod status;
 
+use std::path::Path;
+
 use crate::command::client::account;
 
 #[derive(Subcommand, Debug)]
@@ -22,6 +24,10 @@ pub enum Cmd {
         /// Force re-download everything
         #[arg(long, short)]
         force: bool,
+
+        /// Check if fish_sync startup is enabled (exits with 0 if true, 1 if false)
+        #[arg(long, conflicts_with = "force")]
+        should_fish_sync: bool,
     },
 
     /// Login to the configured server
@@ -52,7 +58,21 @@ impl Cmd {
         store: SqliteStore,
     ) -> Result<()> {
         match self {
-            Self::Sync { force } => run(&settings, force, db, store).await,
+            Self::Sync {
+                force,
+                should_fish_sync,
+            } => {
+                if should_fish_sync {
+                    // Check if fish_sync.sync_on_startup is enabled
+                    if settings.fish_sync.sync_on_startup {
+                        Ok(())
+                    } else {
+                        Err(eyre::eyre!("fish sync startup is disabled"))
+                    }
+                } else {
+                    run(&settings, force, db, store).await
+                }
+            }
             Self::Login(l) => l.run(&settings, &store).await,
             Self::Logout => account::logout::run(&settings),
             Self::Register(r) => r.run(&settings).await,
@@ -81,6 +101,37 @@ async fn run(
     db: &Sqlite,
     store: SqliteStore,
 ) -> Result<()> {
+    // Handle PID file if set via environment variable
+    if let Ok(pid_file) = std::env::var("ATUIN_SYNC_PID_FILE") {
+        // Ensure directory exists
+        if let Some(parent) = Path::new(&pid_file).parent() {
+            fs_err::create_dir_all(parent)?;
+        }
+
+        // Check if sync is already running
+        if Path::new(&pid_file).exists() {
+            if let Ok(pid_str) = fs_err::read_to_string(&pid_file) {
+                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    // Check if process is still running using kill -0
+                    if cfg!(unix) {
+                        if let Ok(output) = std::process::Command::new("kill")
+                            .arg("-0")
+                            .arg(pid.to_string())
+                            .output()
+                        {
+                            if output.status.success() {
+                                return Ok(()); // Sync already running
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Write our PID
+        fs_err::write(&pid_file, std::process::id().to_string())?;
+    }
+
     if settings.sync.records {
         let encryption_key: [u8; 32] = encryption::load_key(settings)
             .context("could not load encryption key")?
@@ -134,6 +185,19 @@ async fn run(
                 }
             }
         }
+
+        // Check if we should sync all local entries
+        if settings.fish_sync.sync_all_on_cli {
+            println!("Syncing all local Atuin entries to Fish history...");
+            match fish_sync::sync_all_entries(settings, db).await {
+                Ok(count) => {
+                    if count > 0 {
+                        println!("Synced {} local entries to Fish history", count);
+                    }
+                }
+                Err(e) => eprintln!("Failed to sync all local entries to fish history: {}", e),
+            }
+        }
     } else {
         atuin_client::sync::sync(settings, force, db).await?;
     }
@@ -143,6 +207,11 @@ async fn run(
         db.history_count(true).await?,
         force
     );
+
+    // Clean up PID file on completion
+    if let Ok(pid_file) = std::env::var("ATUIN_SYNC_PID_FILE") {
+        let _ = fs_err::remove_file(&pid_file);
+    }
 
     Ok(())
 }

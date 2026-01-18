@@ -427,14 +427,49 @@ pub struct FishSync {
     #[serde(alias = "enable")]
     pub enabled: bool,
 
+    /// Sync all local Atuin entries when running `atuin sync` command
+    #[serde(default = "FishSync::sync_all_on_cli_default")]
+    pub sync_all_on_cli: bool,
+
+    /// Sync all local Atuin entries when daemon runs scheduled sync
+    #[serde(default = "FishSync::sync_all_on_daemon_default")]
+    pub sync_all_on_daemon: bool,
+
+    /// Run atuin sync on Fish shell startup
+    #[serde(default = "FishSync::sync_on_startup_default")]
+    pub sync_on_startup: bool,
+
+    /// Maximum number of entries to keep in Fish history (prevent file bloat)
+    #[serde(default = "FishSync::max_entries_default")]
+    pub max_entries: usize,
+
     /// Path to the Fish history file
     pub history_path: String,
+}
+
+impl FishSync {
+    fn sync_all_on_cli_default() -> bool {
+        false
+    }
+    fn sync_all_on_daemon_default() -> bool {
+        false
+    }
+    fn sync_on_startup_default() -> bool {
+        false
+    }
+    fn max_entries_default() -> usize {
+        10000
+    }
 }
 
 impl Default for FishSync {
     fn default() -> Self {
         Self {
             enabled: false,
+            sync_all_on_cli: false,
+            sync_all_on_daemon: false,
+            sync_on_startup: false,
+            max_entries: 10000,
             history_path: "~/.local/share/fish/fish_history".to_string(),
         }
     }
@@ -854,6 +889,10 @@ impl Settings {
             .set_default("daemon.systemd_socket", false)?
             .set_default("daemon.tcp_port", 8889)?
             .set_default("fish_sync.enabled", false)?
+            .set_default("fish_sync.sync_all_on_cli", false)?
+            .set_default("fish_sync.sync_all_on_daemon", false)?
+            .set_default("fish_sync.sync_on_startup", false)?
+            .set_default("fish_sync.max_entries", 10000)?
             .set_default("fish_sync.history_path", "~/.local/share/fish/fish_history")?
             .set_default("kv.db_path", kv_path.to_str())?
             .set_default("scripts.db_path", scripts_path.to_str())?
