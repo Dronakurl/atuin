@@ -70,8 +70,6 @@ fn entry_exists_in_fish_history(path: &str, command: &str, timestamp: i64) -> Re
     // Normalize the command for comparison (Fish may add spaces)
     // We need to check for both formats:
     // "- cmd:command" and "- cmd: command" (with space)
-    let cmd_pattern1 = format!("- cmd:{}", command);
-    let cmd_pattern2 = format!("- cmd: {}", command);
     let timestamp_str = timestamp.to_string();
 
     // Parse entries and check for match
@@ -283,6 +281,12 @@ pub async fn sync_downloaded_entries(
         synced,
         downloaded_ids.len()
     );
+
+    if synced > 0 {
+        println!("\nSynced {synced} entry(s) to Fish history.");
+        println!("Note: Restart Fish or run 'history reload' to see these in autosuggestions.\n");
+    }
+
     Ok(())
 }
 
@@ -342,6 +346,11 @@ pub async fn sync_all_entries(
         synced_uuids.len()
     );
 
+    // Reverse entries to write in chronological order (oldest first)
+    // The database returns newest first, but we need to append oldest first
+    // to maintain correct order for Fish's autosuggestions
+    let new_entries: Vec<_> = new_entries.into_iter().rev().collect();
+
     let mut synced = 0;
     for entry in &new_entries {
         if let Err(e) = sync_entry(entry, settings) {
@@ -356,6 +365,12 @@ pub async fn sync_all_entries(
     }
 
     log::info!("synced {}/{} new entries to fish history", synced, new_entries.len());
+
+    if synced > 0 {
+        println!("\nSynced {synced} entry(s) to Fish history.");
+        println!("Note: Restart Fish or run 'history reload' to see these in autosuggestions.\n");
+    }
+
     Ok(synced)
 }
 
