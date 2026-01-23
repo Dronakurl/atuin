@@ -29,16 +29,14 @@ pub struct HistoryService {
     running: Arc<DashMap<HistoryId, History>>,
     store: HistoryStore,
     history_db: HistoryDatabase,
-    settings: Settings,
 }
 
 impl HistoryService {
-    pub fn new(store: HistoryStore, history_db: HistoryDatabase, settings: Settings) -> Self {
+    pub fn new(store: HistoryStore, history_db: HistoryDatabase) -> Self {
         Self {
             running: Arc::new(DashMap::new()),
             store,
             history_db,
-            settings,
         }
     }
 }
@@ -259,7 +257,7 @@ pub async fn listen(
     let host_id = Settings::host_id().expect("failed to get host_id");
     let history_store = HistoryStore::new(store.clone(), host_id, encryption_key);
 
-    let history = HistoryService::new(history_store.clone(), history_db.clone(), settings.clone());
+    let history = HistoryService::new(history_store.clone(), history_db.clone());
 
     // start services
     tokio::spawn(sync::worker(

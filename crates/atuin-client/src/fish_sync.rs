@@ -217,4 +217,135 @@ mod tests {
             assert!(content.contains(&format!("test command {}", i)));
         }
     }
+
+    #[test]
+    fn test_format_fish_entry_with_newlines() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "echo \"line1\nline2\nline3\"".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        // Newlines should be escaped as \n (backslash followed by n)
+        assert!(formatted.contains(r#"echo "line1\nline2\nline3""#));
+    }
+
+    #[test]
+    fn test_format_fish_entry_with_backslashes() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: r"echo C:\Users\test".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        // Backslashes should be escaped as \\
+        assert!(formatted.contains(r"echo C:\\Users\\test"));
+    }
+
+    #[test]
+    fn test_format_fish_entry_with_tabs() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "echo\thello\tworld".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        // Tabs should be preserved
+        assert!(formatted.contains("echo\thello\tworld"));
+    }
+
+    #[test]
+    fn test_format_fish_entry_with_unicode() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "echo 'Hello 世界 🌍'".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        // Unicode should be preserved
+        assert!(formatted.contains("Hello 世界 🌍"));
+    }
+
+    #[test]
+    fn test_format_fish_entry_empty_command() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: "".to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        assert!(formatted.contains("- cmd:"));
+    }
+
+    #[test]
+    fn test_format_fish_entry_very_long_command() {
+        let long_command = "a".repeat(2000);
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: long_command.clone(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        assert!(formatted.contains(&long_command[..100]));
+    }
+
+    #[test]
+    fn test_format_fish_entry_special_characters() {
+        let history = History {
+            id: "00000000-0000-0000-000000000000001".to_string().into(),
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            duration: 0,
+            exit: 0,
+            command: r#"echo 'test with "quotes" and `backticks` and $dollar'"#.to_string(),
+            cwd: "/home/user".to_string(),
+            session: "test".to_string(),
+            hostname: "localhost".to_string(),
+            deleted_at: None,
+        };
+
+        let formatted = format_fish_entry(&history);
+        assert!(formatted.contains(r#"echo 'test with "quotes" and `backticks` and $dollar'"#));
+    }
 }
